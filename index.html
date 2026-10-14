@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>당뇨병 진행도 신경망 계산기</title>
+<meta name="description" content="공개 Diabetes 데이터셋으로 학습한 인공신경망(10-32-16-1)이 1년 뒤 당뇨병 진행 정도를 예측합니다.">
+<style>
+:root {
+  --bg: #e9efed;
+  --panel: #ffffff;
+  --ink: #13262b;
+  --muted: #5e7176;
+  --line: #cfdad7;
+  --teal: #0e7c86;
+  --teal-soft: #d3e9ea;
+  --lin: #8a9ba0;
+  --high: #b8325a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1c1f; --panel: #16272b; --ink: #e4eeec; --muted: #94a8ab;
+    --line: #2a3f43; --teal: #3fb3bc; --teal-soft: #1d3c40; --lin: #7d9195; --high: #e0668a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1c1f; --panel: #16272b; --ink: #e4eeec; --muted: #94a8ab;
+  --line: #2a3f43; --teal: #3fb3bc; --teal-soft: #1d3c40; --lin: #7d9195; --high: #e0668a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", sans-serif;
+  font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; word-break: keep-all;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding: 40px 24px 64px; }
+header { max-width: 680px; margin-bottom: 32px; }
+h1 { font-weight: 600; font-size: clamp(26px, 4vw, 36px); line-height: 1.25; margin: 0 0 12px; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--muted); }
+header a { color: var(--teal); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 32px; align-items: start; }
+
+/* 입력 */
+.inputs { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 24px 20px; }
+.group h2 { font-size: 15px; font-weight: 600; margin: 20px 0 4px; }
+.group h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+.field { display: grid; grid-template-columns: 112px minmax(0, 1fr) 76px; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.group .field:last-child { border-bottom: 0; }
+.field label { font-size: 14px; }
+.field label span { display: block; font-size: 12px; color: var(--muted); line-height: 1.3; }
+input[type=range] { width: 100%; accent-color: var(--teal); }
+input[type=number] {
+  width: 100%; font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; text-align: right;
+  padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink);
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--ink); padding: 4px 18px; cursor: pointer; }
+.seg button[aria-pressed=true] { background: var(--teal); color: #fff; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+.samples { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.samples p { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button {
+  font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--ink);
+}
+.chips button:hover { border-color: var(--teal); }
+.chips button[aria-pressed=true] { background: var(--teal-soft); border-color: var(--teal); }
+
+/* 결과 */
+.result { position: sticky; top: 20px; }
+.score { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
+.big { font-weight: 300; font-size: clamp(72px, 11vw, 112px); line-height: 0.9; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--teal); }
+.score-side { padding-bottom: 8px; font-size: 14px; color: var(--muted); }
+.score-side strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.caption { margin: 10px 0 18px; font-size: 15px; }
+
+.scale { position: relative; height: 46px; margin: 8px 0 4px; }
+.track { position: absolute; left: 0; right: 0; top: 18px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--teal-soft), var(--teal) 55%, var(--high)); opacity: .85; }
+.mark { position: absolute; top: 8px; width: 2px; height: 28px; transform: translateX(-1px); transition: left .25s ease; }
+.mark.ann { background: var(--ink); }
+.mark.lin { background: var(--lin); top: 12px; height: 20px; }
+.mark.act { background: transparent; border-left: 2px dashed var(--high); top: 4px; height: 36px; display: none; }
+.mark.avg { background: var(--panel); top: 16px; height: 12px; width: 3px; }
+.scale-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); margin: 8px 0 22px; }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; }
+
+.net { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 16px 10px; }
+.net h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+.net p { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.net svg { width: 100%; height: auto; display: block; }
+.net .lbl { font-size: 11px; fill: var(--muted); }
+
+.err { margin: 14px 0 0; padding: 10px 14px; border-radius: 8px; background: #fbe9ee; color: #8a1f40; font-size: 14px; }
+footer { margin-top: 48px; font-size: 13px; color: var(--muted); max-width: 680px; }
+footer a { color: var(--teal); }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  .result { position: static; order: -1; }
+}
+@media (max-width: 480px) {
+  .wrap { padding: 28px 16px 48px; }
+  .inputs { padding: 4px 16px 16px; }
+  .field { grid-template-columns: 1fr 72px; }
+  .field input[type=range], .field .seg { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (prefers-reduced-motion: reduce) { .mark { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>건강 지표 10가지로 1년 뒤 당뇨병 진행도를 예측합니다</h1>
+    <p>공개 Diabetes 데이터셋(환자 442명)으로 학습한 인공신경망이 브라우저 안에서 바로 계산합니다. 값을 바꾸면 예측과 신경망 내부가 함께 움직입니다.
+      <a id="repo-link" href="#" hidden>코드 보기</a></p>
+    <noscript><p class="err">자바스크립트가 꺼져 있어 계산기가 동작하지 않습니다. 브라우저 설정에서 자바스크립트를 켜 주세요.</p></noscript>
+    <p class="err" id="js-error" hidden></p>
+  </header>
+
+  <div class="layout">
+    <form class="inputs" id="form" onsubmit="return false">
+      <div class="group" id="g-basic"><h2>기본 정보</h2></div>
+      <div class="group" id="g-blood"><h2>혈청 검사<small>단위는 원 데이터 기준</small></h2></div>
+      <div class="samples">
+        <p>테스트 데이터의 실제 환자로 채워 보기 (학습에 쓰지 않은 환자)</p>
+        <div class="chips" id="chips"></div>
+      </div>
+    </form>
+
+    <section class="result" aria-live="polite">
+      <div class="score">
+        <div class="big" id="ann">–</div>
+        <div class="score-side">
+          인공신경망 예측<br>
+          선형회귀 <strong id="lin">–</strong>
+          <span id="actual-wrap" hidden> · 실제 <strong id="actual">–</strong></span>
+        </div>
+      </div>
+      <p class="caption" id="caption"></p>
+
+      <div class="scale" aria-hidden="true">
+        <div class="track"></div>
+        <div class="mark avg" id="m-avg"></div>
+        <div class="mark lin" id="m-lin"></div>
+        <div class="mark act" id="m-act"></div>
+        <div class="mark ann" id="m-ann"></div>
+      </div>
+      <div class="scale-labels"><span>25 (가장 낮음)</span><span>346 (가장 높음)</span></div>
+      <div class="legend">
+        <span><i style="background:var(--ink)"></i>인공신경망</span>
+        <span><i style="background:var(--lin)"></i>선형회귀</span>
+        <span id="lg-act" hidden><i style="border-top:2px dashed var(--high);height:0"></i>실제값</span>
+        <span>흰 눈금: 전체 평균 152</span>
+      </div>
+
+      <div class="net">
+        <h2>신경망 내부</h2>
+        <p>입력 10 → 은닉 32 → 은닉 16 → 출력 1. 진하게 칠해진 노드일수록 지금 입력에 강하게 반응(ReLU 출력이 큼)하고, 빈 노드는 0입니다.</p>
+        <svg id="netsvg" viewBox="0 0 520 430" role="img" aria-label="입력층, 은닉층 두 개, 출력층으로 이루어진 신경망 활성화 그림"></svg>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    모델: 다층 퍼셉트론 10-32-16-1 (ReLU, Adam, L2 정규화, 조기 종료), NumPy로 직접 구현. 테스트 데이터 R² 0.502 (선형회귀 0.447).
+    데이터: Efron et al. (2004), scikit-learn Diabetes 데이터셋. 성별은 원 데이터에서 1과 2로만 기록되어 있습니다.
+    학습용 과제이며 의료적 판단에 쓸 수 없습니다.
+  </footer>
+</div>
+
+<script>
+// 오류가 나면 화면에 이유를 보여 준다 (빈 화면 방지)
+window.addEventListener("error", function (e) {
+  var box = document.getElementById("js-error");
+  if (box) { box.hidden = false; box.textContent = "계산기를 불러오지 못했습니다: " + (e.message || "알 수 없는 오류") + " (최신 Chrome·Edge·Safari에서 다시 열어 보세요)"; }
+});
+// GitHub Pages 주소(아이디.github.io/저장소)에서 저장소 링크를 자동으로 만든다 → 저장소 이름이 달라도 동작
+(function () {
+  var a = document.getElementById("repo-link");
+  var host = location.hostname, seg = location.pathname.split("/").filter(Boolean);
+  if (/\.github\.io$/.test(host)) {
+    var user = host.replace(/\.github\.io$/, "");
+    a.href = "https://github.com/" + user + "/" + (seg.length && !/\.html$/.test(seg[0]) ? seg[0] : host);
+    a.hidden = false;
+  }
+})();
+</script>
+<script>
+const MODEL = {"features": ["age", "sex", "bmi", "bp", "s1", "s2", "s3", "s4", "s5", "s6"], "layers": [10, 32, 16, 1], "x_mean": [48.82847896440129, 1.4724919093851132, 26.644336569579302, 95.01181229773464, 190.27184466019418, 116.11553398058251, 49.63592233009709, 4.111521035598705, 4.662481877022656, 92.0032362459547], "x_std": [12.727147727287967, 0.499242731495134, 4.451370680505569, 13.920480684088993, 34.85778620418652, 30.569416228211406, 12.865534508702487, 1.3137320355414899, 0.5254099746094761, 11.57262095939179], "y_mean": 153.90291262135923, "y_std": 78.41098032914032, "W": [[[0.1517537, -0.48474204, 0.35245826, 0.42046418, -0.85937799, -0.61710567, 0.06120498, -0.14355636, -0.03419202, -0.34425417, 0.40166958, 0.3040579, -0.02420279, 0.49768728, 0.21732808, -0.36796002, 0.15474644, -0.44236416, 0.38893868, -0.04986003, -0.12401295, -0.2814635, 0.51614589, -0.0209375, -0.20573844, -0.17142563, 0.19810035, 0.17505301, 0.14044536, 0.23628925, 0.9440712, -0.14640614], [-0.22888969, -0.31542677, 0.25466681, 0.53999388, -0.07384744, -0.37223428, -0.3204998, 0.36006869, 0.31635298, 0.25821788, -0.22487925, 0.11046208, 0.08476141, 0.12103195, 0.35053481, 0.08249356, 0.36769948, 0.01756229, 0.06951641, 0.33331809, -0.61449442, -0.15736108, -0.16702368, -0.32728813, -0.1150811, 0.62713952, -0.34534013, 0.40259019, -0.72757792, -0.15093432, 0.01846256, 0.20145733], [0.31369406, 0.34278269, -0.15061128, -0.19725096, 0.32850104, -0.148464, -0.62641148, -0.50309311, -0.44927052, 0.17210076, 0.02006544, 0.36341314, -0.1927121, 0.00601876, 0.32844307, -0.18894443, 0.12213093, -0.25578534, -0.1380077, -0.22521887, -0.50277434, 0.15424142, -0.16982869, -0.04566649, 0.23871818, 0.26506542, 0.36688447, -0.05402645, -0.1880132, -0.03932982, -0.70870806, -0.58634794], [-0.57484812, -0.44947601, 0.2385921, -0.39182543, -0.19232595, 0.57610468, -0.14234708, 0.30203196, -0.42862968, -0.15739577, -0.41014757, -0.0799055, 0.33808997, -0.82408005, 0.20595988, 0.05396503, -0.31462687, -0.59679991, 0.00717708, -0.26688539, 0.10600732, 0.00051267, 0.68736204, -0.10548221, -0.40519504, 0.11133462, 0.09851461, 0.5662008, 0.33307143, 0.09428504, 0.67406583, -0.49707233], [-0.32181344, -0.37789187, -0.21150255, -0.62395133, 0.34303393, -0.03087476, -0.63374695, -0.47363104, 0.15508088, 0.40777466, 0.86962597, 1.25901958, 0.13890643, -0.38774731, -0.93882832, 0.15813056, -0.31481995, -0.24675903, -0.24755543, -0.02761622, 0.42326973, 0.11796661, -0.12531113, -0.41797673, -0.76404926, -0.25314242, -0.07867955, 0.79923977, 0.00540178, 0.49638441, -0.19994046, -0.55053459], [-0.45044412, -0.28289827, 0.89979142, -0.37525794, 0.41002336, -0.36936782, 0.42051076, 0.17584192, -0.06949109, -0.00755893, -0.31974516, 0.16303642, -0.20102412, -0.50432312, -0.58420004, 0.0963848, 0.74542591, 0.03627112, -0.0421523, 0.16094506, 0.5353519, 0.12346388, -0.20403154, 0.51465723, 0.15502634, 0.65879189, 0.04376662, -0.52168294, -0.6198273, 0.79534803, 0.7662554, -0.07736828], [-0.16194927, 0.64839858, -0.51012489, -0.3843068, 0.34823704, -0.14319209, 0.06145343, -0.10080908, 0.19436707, 0.65472527, 0.0296644, 0.23638385, -0.95970362, 0.01918686, -0.35085483, -0.51884257, -0.31666227, -0.18855982, 0.42714622, -0.58420366, -0.03602265, -0.16018531, -0.18780741, 0.49382193, 0.22098969, 0.54272824, -0.13490067, -0.26870958, -0.10415126, 0.14801539, 0.08772585, -0.54351326], [0.01651458, 0.11827821, 1.11008448, 0.83300563, -0.38730343, -0.10073855, -0.69686684, -0.2311157, 0.11422727, 0.5221683, -0.33988471, -0.28788663, -0.92686342, -0.0815651, -0.50094147, -0.23618536, -0.43834435, -0.05562179, -0.79549146, -0.6415274, 0.94104715, -0.62433353, -0.46838727, 0.81356518, 1.29788382, -0.48557966, -0.14007516, 0.13232353, 0.75258343, -0.42266695, -0.09744877, 0.36868697], [0.16193239, -0.18919562, -0.06042522, -0.6174067, -0.09943783, -0.09373542, 0.04526937, -0.27418835, 0.21020498, 0.47375572, 0.03923738, 0.14239717, -0.00628673, 0.01268755, -0.29554683, 0.17334915, -0.10174373, 0.88882085, 0.73809495, 0.16889798, -0.3704337, -0.532989, 0.50052516, 0.15469508, 0.25824851, -0.72626414, 0.38818547, 0.15108288, -0.52785638, -0.18813298, 0.15279206, 0.03254372], [-0.13372315, -0.04717008, -0.07310528, 0.06690337, 0.66130228, -1.126104, -0.11720806, 0.02441774, 0.11381657, -0.15370097, -0.79136284, 0.16507984, 0.73416883, -0.68705356, 0.42336406, -0.17038306, -0.04897066, -0.4507015, -0.14455337, 0.59978736, 0.26848485, 0.74821798, 0.49009238, 0.21032492, 0.77470202, 0.18788156, 0.36348731, -0.14928374, -0.03968449, -0.27389998, 0.47842222, -0.50202484]], [[0.15905474, -0.0758792, 0.24089191, 0.1516518, 0.42219679, 0.22294105, -0.40401633, -0.05317046, -0.29626965, -0.10846248, 0.41007348, 0.14686205, -0.17446734, -0.23752502, -0.01813152, -0.29891413], [-0.18252305, 0.10151124, 0.27609992, 0.15891225, -0.58069908, 0.07120935, -2.014e-05, 0.14724215, 0.37746043, -0.4003129, -0.15130856, 0.19450315, -0.40411479, 0.34673137, 0.08214254, 0.1957502], [-0.13650525, 0.20150824, 0.26120613, 0.05481912, 0.0651398, 0.05820207, -0.21407674, -0.05534409, -0.05496068, 0.08872112, 0.24457081, -0.19149661, -0.04890296, 0.36194781, -0.20201546, -0.23364454], [0.08401808, 0.22414417, -0.00207637, 0.31245796, 0.19436404, 0.18767034, 0.14330218, 0.59768357, -0.04195113, -0.42425169, 0.42296455, -0.05832001, 0.01323256, 0.36214849, -0.38651555, -0.31115906], [-0.41649198, -0.15018391, 0.10608472, 0.16119012, 0.10161825, -0.3929972, -0.57031161, 0.07623907, -0.13017672, 0.11636948, 0.14017815, 0.10955393, 0.15063666, 0.02211458, 0.10853229, -0.21973034], [-0.01840759, 0.04904956, 0.19540506, -0.1003164, 0.10864544, -0.06989051, -0.01303569, 0.2084603, -0.44981094, -0.22287814, -0.35144514, -0.54001677, -0.18060924, 0.19862746, -0.07034569, 0.05197771], [0.28743162, 0.36489478, -0.01631229, 0.35174531, 0.03011209, -0.23007149, -0.12556627, -0.33274562, -0.24512015, -0.06860856, 0.19035044, 0.48259268, -0.36150251, 0.0772845, -0.28272403, 0.09296592], [0.04231988, -0.38408954, 0.28152924, -0.10696666, -0.09688147, -0.32947928, -0.17446455, 0.16994529, -0.04000274, 0.04366465, 0.05760369, 0.42377894, -0.11804353, -0.37401325, 0.22948949, -0.11006819], [0.3531497, 0.17485051, 0.01921164, 0.1601854, 0.55740394, 0.46174141, 0.01224357, 0.11935704, 0.24445407, -0.20811379, 0.02082408, 0.09863103, 0.03461972, -0.24159762, -0.44438733, -0.56541258], [-0.22770319, -0.0710901, -0.06421817, 0.52724713, 0.32405721, -0.28067464, 0.04820221, -0.04604661, -0.09005151, 0.03701005, 0.11058175, -0.00583189, 0.2305381, -0.31590393, -0.01889736, 0.60628221], [0.07300854, 0.41408906, 0.04638332, 0.19998014, 0.04930361, -0.08520099, -0.19400831, 0.15699984, -0.2305955, 0.14170374, 0.21551835, 0.16968851, -0.11262511, 0.0783188, -0.09708384, 0.19415839], [-0.46437024, -0.02622918, -0.46624085, -0.32160711, 0.39917349, 0.18183352, -0.1955838, -0.32402563, -0.7622795, -0.14522352, 0.55324462, 0.18997792, -0.17680873, 0.07510108, -0.41724807, -0.11468641], [0.03431769, -0.01726393, 0.19875888, 0.10344468, 0.17324165, -0.19576552, 0.22157775, 0.40179854, -0.2338388, -0.22766801, 0.32098558, -0.01971607, 0.32015734, -0.08729002, 0.33157228, 0.00302375], [0.08634689, 0.41684747, -0.10691024, -0.24038585, -0.12864659, 0.09260175, -0.42471148, 0.18911673, -0.09456947, 0.27149567, -0.57885722, -0.13812852, -0.40369566, -0.22543194, 0.03394965, -0.0611724], [-0.05415086, -0.06300113, 0.01469125, -0.27194599, 0.12589354, 0.18310445, 0.11142224, 0.1238857, 0.10104813, 0.49519813, 0.019606, -0.05840875, -0.19926783, -0.19905704, -0.31464815, -0.20646296], [0.03791242, 0.09519396, 0.01523103, -0.17547967, 0.25097663, 0.1461655, -0.05151571, -0.11570418, 0.10492685, 0.02707275, -0.38112585, 0.04252619, 0.05053838, -0.19952006, 0.05317975, -0.38322476], [0.36481156, 0.37142277, -0.04286799, 0.12123742, -0.55924654, -0.32098304, -0.04471883, -0.25086833, 0.20391571, 0.43518825, -0.32546881, -0.09380356, 0.01791393, 0.37812866, -0.33388996, 0.02494343], [0.48108312, -0.36558022, -0.30469787, -0.0568739, -0.06496036, 0.16494046, 0.03829234, -0.38397365, 0.10620438, -0.16529582, 0.26237515, -0.09142557, -0.19118367, 0.1069016, 0.16349038, 0.07770205], [-0.39494205, 0.17996874, -0.26544976, 0.09773587, -0.30967772, 0.07299474, -0.20073519, -0.28431118, 0.15062131, 0.04441779, -0.19405145, 0.42355813, -0.14532353, -0.00374575, 0.0282251, -0.18893092], [0.14166157, -0.09576508, -0.09779457, 0.35939134, -0.24926925, -0.63719069, 0.40555181, 0.67051819, -0.09091725, -0.42803033, -0.09524442, -0.01408135, -0.0805052, -0.28897575, 0.11511138, 0.10694602], [-0.35875151, 0.20335893, 0.52149042, 0.06551452, -0.05345934, -0.06051535, 0.14543507, -0.4143492, 0.02144996, -0.10916572, 0.43256525, 0.04755744, 0.38945556, -0.30922026, 0.12451279, 0.03842343], [-0.22591884, 0.09495212, 0.30697316, -0.06305088, -0.42111755, -0.03802816, -0.1941569, -0.05282877, 0.00615643, -0.35585099, -0.42557457, 0.1940135, -0.16378537, -0.63299441, 0.1622928, 0.02842785], [-0.15618027, -0.30225306, 0.22662794, 0.11656998, 0.62612639, 0.0732526, 0.08461224, -0.05711943, 0.19197675, 0.13153875, 0.28370447, -0.0882885, -0.13546035, -0.08271595, 0.15913077, 0.33791519], [-0.15946721, -0.09180197, 0.06802226, -0.05899339, 0.2529436, -0.57477867, -0.20121779, -0.21974454, -0.47998662, -0.2267853, -0.24407272, 0.02110542, 0.24985225, -0.09386404, -0.26179641, -0.0606644], [0.23014121, -0.26450449, -0.25733668, 0.11397181, -0.07431642, 0.15876017, 0.00063307, 0.15830389, -0.23638852, -0.01259555, -0.03492171, -0.29148633, -0.40176403, 0.16299242, -0.09947564, -0.27965877], [0.06825227, 0.36278009, -0.50985583, -0.29686081, -0.1661394, 0.29858225, 0.07912637, 0.26615032, -0.23080399, -0.26582203, 0.05287153, 0.12022535, 0.09456824, -0.08280793, 0.02679149, -0.00562881], [0.1676085, 0.21310564, -0.41377934, -0.56273282, 0.26256809, 0.28077647, -0.25474569, -0.52323083, 0.02207137, 0.20781223, 0.43458853, 0.1681432, -0.1195429, -0.23398193, -0.03428468, -0.11197246], [-0.23646999, 0.50474855, 0.43819611, 0.29158787, -0.22121029, 0.19511454, 0.14162564, 0.09577535, 0.30014578, 0.14596751, 0.1763562, 0.20769973, 0.0667169, -0.43157439, -0.01433001, -0.17148905], [-0.35883628, 0.39541255, 0.41572311, 0.33125637, 0.05234892, 0.3448606, -0.02202592, -0.00402777, -0.2936666, 0.07863963, 0.01693968, -0.29958875, -0.03146523, 0.01869479, 0.42388543, 0.20267655], [0.05518705, 0.126826, 0.05016601, 0.00685953, -0.20735566, -0.08579269, -0.1730531, -0.24317979, 0.02905498, 0.08267309, -0.50214089, 0.05721565, 0.20899927, 0.22339482, 0.22427776, -0.03399356], [-0.19523475, -0.21964256, 0.11699257, 0.12895429, 0.36745336, 0.23187103, -0.04712004, -0.28166882, -0.10735882, 0.03128369, -0.09218683, -0.06578964, 0.03278587, -0.14721047, -0.19998775, 0.03693627], [-0.05546561, 0.09625859, 0.09184002, -0.26848521, -0.0831443, 0.32365022, -0.28695397, -0.48377724, -0.39144139, 0.02936499, -0.00996058, 0.02006881, 0.27861576, -0.64211755, 0.0954815, 0.38088729]], [[-0.43061086], [-0.16644104], [-0.2457689], [-0.31402431], [-0.15150242], [0.47403533], [0.64066155], [-0.13205708], [0.65242322], [0.01998786], [0.58688807], [-0.11233256], [0.0129077], [0.10883607], [1.08494935], [0.2707156]]], "b": [[-0.0212127, -0.03998964, -0.00079666, 0.00584525, 0.03950323, 0.00560078, 0.03228354, -0.01459997, 0.02300329, -0.01029147, -0.02880129, -0.03575286, -0.03332382, 0.01108034, 0.04618933, 0.01174201, 0.03594297, -0.02746034, 0.02941203, 0.03887941, -0.04300691, -0.02030972, -0.03329712, 0.01865511, 0.04039843, -0.0335706, -0.01031475, -0.04686316, -0.03511702, 0.06265658, -0.01124567, -0.02546346], [0.03300881, 0.03893885, 3.812e-05, 0.02340585, 0.02833192, -0.03088386, 0.00240714, 0.02472368, -0.00377645, -0.00672314, -0.0277529, 0.08588144, -0.03407047, -0.01550283, -0.03078082, -0.0375882], [-0.03550292]], "linear": {"coef": [1.35246724, -12.45426893, 26.21004615, 18.61443344, -43.26039442, 24.2556288, 5.73862584, 13.96342685, 31.57521526, 1.98339354], "intercept": 153.90291262135946}};
+const SAMPLES = [{"x": [22.0, 1.0, 19.9, 75.0, 175.0, 108.6, 54.0, 3.0, 4.1271, 72.0], "y": 158.0}, {"x": [30.0, 2.0, 25.2, 83.0, 178.0, 118.4, 34.0, 5.0, 4.852, 83.0], "y": 202.0}, {"x": [20.0, 1.0, 22.9, 87.0, 191.0, 128.2, 53.0, 4.0, 3.8918, 85.0], "y": 113.0}, {"x": [60.0, 2.0, 24.3, 103.0, 141.0, 86.6, 33.0, 4.0, 4.6728, 78.0], "y": 156.0}, {"x": [28.0, 2.0, 25.5, 99.0, 162.0, 101.6, 46.0, 4.0, 4.2767, 94.0], "y": 60.0}, {"x": [36.0, 1.0, 30.0, 95.0, 201.0, 125.2, 42.0, 4.79, 5.1299, 85.0], "y": 220.0}];
+
+const FIELDS = [
+  { k: "age", ko: "나이", sub: "세", min: 19, max: 79, step: 1, g: "g-basic" },
+  { k: "sex", ko: "성별", sub: "데이터 코드", min: 1, max: 2, step: 1, g: "g-basic", seg: true },
+  { k: "bmi", ko: "BMI", sub: "체질량지수", min: 18, max: 42.2, step: 0.1, g: "g-basic" },
+  { k: "bp", ko: "평균 혈압", sub: "mmHg", min: 62, max: 133, step: 1, g: "g-basic" },
+  { k: "s1", ko: "총콜레스테롤", sub: "TC", min: 97, max: 301, step: 1, g: "g-blood" },
+  { k: "s2", ko: "LDL", sub: "저밀도 지단백", min: 41.6, max: 242.4, step: 0.1, g: "g-blood" },
+  { k: "s3", ko: "HDL", sub: "고밀도 지단백", min: 22, max: 99, step: 1, g: "g-blood" },
+  { k: "s4", ko: "TC/HDL", sub: "비율", min: 2, max: 9.09, step: 0.01, g: "g-blood" },
+  { k: "s5", ko: "중성지방", sub: "로그값", min: 3.258, max: 6.107, step: 0.001, g: "g-blood" },
+  { k: "s6", ko: "혈당", sub: "mg/dL", min: 58, max: 124, step: 1, g: "g-blood" },
+];
+const DEFAULTS = MODEL.x_mean.map((v, i) => FIELDS[i].seg ? 1 : +v.toFixed(FIELDS[i].step < 1 ? String(FIELDS[i].step).split(".")[1].length : 0));
+const state = DEFAULTS.slice();
+let actual = null;
+
+const $ = (id) => document.getElementById(id);
+const decimals = (s) => (String(s).split(".")[1] || "").length;
+
+// 입력 UI 만들기
+FIELDS.forEach((f, i) => {
+  const row = document.createElement("div");
+  row.className = "field";
+  const id = "f-" + f.k;
+  if (f.seg) {
+    row.innerHTML = `<label id="${id}-l">${f.ko}<span>${f.sub}</span></label>
+      <div class="seg" role="group" aria-labelledby="${id}-l"><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><span></span>`;
+    row.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => set(i, +b.dataset.v)));
+  } else {
+    row.innerHTML = `<label for="${id}">${f.ko}<span>${f.sub}</span></label>
+      <input type="range" id="${id}-r" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.ko}">
+      <input type="number" id="${id}" min="${f.min}" max="${f.max}" step="${f.step}">`;
+    row.querySelector("input[type=range]").addEventListener("input", (e) => set(i, +e.target.value));
+    row.querySelector("input[type=number]").addEventListener("change", (e) => {
+      const v = Math.min(f.max, Math.max(f.min, +e.target.value || f.min));
+      set(i, v);
+    });
+  }
+  $(f.g).appendChild(row);
+});
+
+SAMPLES.forEach((s, j) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = `환자 ${j + 1}`;
+  b.addEventListener("click", () => {
+    s.x.forEach((v, i) => (state[i] = v));
+    actual = s.y;
+    document.querySelectorAll("#chips button").forEach((c) => c.setAttribute("aria-pressed", c === b));
+    render();
+  });
+  $("chips").appendChild(b);
+});
+
+function set(i, v) {
+  state[i] = v;
+  actual = null;
+  document.querySelectorAll("#chips button").forEach((c) => c.setAttribute("aria-pressed", false));
+  render();
+}
+
+// Python의 MLP.forward와 같은 계산
+function forward(x) {
+  let a = x.map((v, i) => (v - MODEL.x_mean[i]) / MODEL.x_std[i]);
+  const acts = [a];
+  MODEL.W.forEach((W, l) => {
+    const out = MODEL.b[l].slice();
+    for (let j = 0; j < out.length; j++) for (let i = 0; i < a.length; i++) out[j] += a[i] * W[i][j];
+    a = l < MODEL.W.length - 1 ? out.map((z) => Math.max(0, z)) : out;
+    acts.push(a);
+  });
+  return { y: a[0] * MODEL.y_std + MODEL.y_mean, acts };
+}
+function linear(x) {
+  return x.reduce((s, v, i) => s + ((v - MODEL.x_mean[i]) / MODEL.x_std[i]) * MODEL.linear.coef[i], MODEL.linear.intercept);
+}
+
+// 신경망 그림
+const svg = $("netsvg");
+const NS = "http://www.w3.org/2000/svg";
+const COLS = [92, 228, 360, 470], TOP = 26, BOT = 404;
+const nodes = MODEL.layers.map((n, l) =>
+  Array.from({ length: n }, (_, i) => ({ x: COLS[l], y: n === 1 ? (TOP + BOT) / 2 : TOP + (i * (BOT - TOP)) / (n - 1) })));
+const edgeG = document.createElementNS(NS, "g");
+svg.appendChild(edgeG);
+let wmax = 0;
+MODEL.W.forEach((W) => W.forEach((r) => r.forEach((w) => (wmax = Math.max(wmax, Math.abs(w))))));
+MODEL.W.forEach((W, l) => W.forEach((row, i) => row.forEach((w, j) => {
+  const ln = document.createElementNS(NS, "line");
+  const A = nodes[l][i], B = nodes[l + 1][j];
+  ln.setAttribute("x1", A.x); ln.setAttribute("y1", A.y); ln.setAttribute("x2", B.x); ln.setAttribute("y2", B.y);
+  ln.setAttribute("stroke", w > 0 ? "var(--teal)" : "var(--high)");
+  ln.setAttribute("stroke-width", 0.4 + 1.6 * Math.abs(w) / wmax);
+  ln.dataset.base = 0.05 + 0.35 * Math.abs(w) / wmax;
+  ln.dataset.l = l; ln.dataset.i = i;
+  edgeG.appendChild(ln);
+})));
+const circles = nodes.map((layer, l) => layer.map((p) => {
+  const c = document.createElementNS(NS, "circle");
+  c.setAttribute("cx", p.x); c.setAttribute("cy", p.y);
+  c.setAttribute("r", l === 0 ? 7 : l === 3 ? 12 : l === 1 ? 4.6 : 5.5);
+  c.setAttribute("stroke", "var(--teal)"); c.setAttribute("stroke-width", 1.2);
+  svg.appendChild(c);
+  return c;
+}));
+FIELDS.forEach((f, i) => {
+  const t = document.createElementNS(NS, "text");
+  t.setAttribute("x", COLS[0] - 14); t.setAttribute("y", nodes[0][i].y + 4);
+  t.setAttribute("text-anchor", "end"); t.setAttribute("class", "lbl");
+  t.textContent = f.ko;
+  svg.appendChild(t);
+});
+const outLbl = document.createElementNS(NS, "text");
+outLbl.setAttribute("x", COLS[3]); outLbl.setAttribute("y", nodes[3][0].y + 30);
+outLbl.setAttribute("text-anchor", "middle"); outLbl.setAttribute("class", "lbl");
+outLbl.textContent = "예측값";
+svg.appendChild(outLbl);
+[["입력", 0], ["은닉 1", 1], ["은닉 2", 2]].forEach(([s, l]) => {
+  const t = document.createElementNS(NS, "text");
+  t.setAttribute("x", COLS[l]); t.setAttribute("y", 12); t.setAttribute("text-anchor", "middle"); t.setAttribute("class", "lbl");
+  t.textContent = s; if (l > 0) svg.appendChild(t);
+});
+
+const pos = (v) => (Math.min(346, Math.max(25, v)) - 25) / (346 - 25) * 100 + "%";
+
+function render() {
+  FIELDS.forEach((f, i) => {
+    if (f.seg) {
+      document.querySelectorAll(`#g-basic .seg button`).forEach((b) => b.setAttribute("aria-pressed", +b.dataset.v === state[i]));
+    } else {
+      $("f-" + f.k).value = (+state[i]).toFixed(decimals(f.step));
+      $("f-" + f.k + "-r").value = state[i];
+    }
+  });
+  const { y, acts } = forward(state);
+  const lin = linear(state);
+  $("ann").textContent = Math.round(y);
+  $("lin").textContent = Math.round(lin);
+  $("m-ann").style.left = pos(y);
+  $("m-lin").style.left = pos(lin);
+  $("m-avg").style.left = pos(MODEL.y_mean);
+  const diff = y - MODEL.y_mean;
+  $("caption").textContent = Math.abs(diff) < 10
+    ? "학습 데이터 평균과 비슷한 수준입니다."
+    : `학습 데이터 평균보다 ${Math.round(Math.abs(diff))}만큼 ${diff > 0 ? "높게" : "낮게"} 예측했습니다.`;
+  const showAct = actual !== null;
+  $("actual-wrap").hidden = !showAct; $("lg-act").hidden = !showAct; $("m-act").style.display = showAct ? "block" : "none";
+  if (showAct) {
+    $("actual").textContent = Math.round(actual);
+    $("m-act").style.left = pos(actual);
+    $("caption").textContent = `실제값과의 차이: 인공신경망 ${Math.round(Math.abs(y - actual))}, 선형회귀 ${Math.round(Math.abs(lin - actual))}`;
+  }
+
+  // 노드 칠하기: 층마다 가장 큰 값을 1로 맞춤 (입력층은 표준화 값의 크기)
+  acts.forEach((a, l) => {
+    const vals = l === 3 ? [Math.min(1, Math.max(0, (y - 25) / 321))] : a.map((v) => Math.abs(v));
+    const mx = l === 3 ? 1 : Math.max(1e-9, ...vals);
+    vals.forEach((v, i) => {
+      const s = v / mx;
+      circles[l][i].setAttribute("fill", "var(--teal)");
+      circles[l][i].setAttribute("fill-opacity", (0.04 + 0.96 * s).toFixed(3));
+    });
+  });
+  // 꺼진 노드에서 나가는 연결선은 흐리게
+  edgeG.childNodes.forEach((ln) => {
+    const l = +ln.dataset.l, i = +ln.dataset.i;
+    const on = l === 0 ? 1 : acts[l][i] > 0 ? 1 : 0.15;
+    ln.setAttribute("stroke-opacity", (ln.dataset.base * on).toFixed(3));
+  });
+}
+render();
+</script>
+</body>
+</html>
