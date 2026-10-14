@@ -3,8 +3,9 @@
 공개 데이터셋(Diabetes, 환자 442명)의 건강 지표 10가지로 **1년 뒤 당뇨병 진행 정도**를 예측하는 인공신경망(MLP)입니다.
 TensorFlow·PyTorch 없이 **NumPy만으로 순전파 · 역전파 · Adam 최적화를 직접 구현**했고, 선형회귀와 성능을 비교했습니다.
 
-🧮 **웹 계산기**: 이 저장소의 GitHub Pages 주소에서 열립니다 → `https://<아이디>.github.io/<저장소 이름>/`
-(켜는 방법은 아래 [웹 계산기 켜기](#웹-계산기-켜기) 참고)
+### 🧮 [웹 계산기 열기 → baekjiwoong5.github.io/-2](https://baekjiwoong5.github.io/-2/)
+
+건강 지표를 입력하면 인공신경망과 선형회귀의 예측값이 바로 나오고, 신경망 내부가 어떻게 반응하는지 볼 수 있습니다.
 
 ## 결과
 
@@ -82,7 +83,7 @@ flowchart LR
 
 1. 저장소를 **Public**으로 둡니다. (무료 계정은 Private 저장소에서 Pages를 쓸 수 없습니다)
 2. **Settings → Pages → Build and deployment**에서 Source를 **Deploy from a branch**, Branch를 **main**, 폴더를 **/ (root)**로 고르고 **Save**
-3. 1~2분 뒤 같은 화면 위쪽에 나오는 주소(`https://<아이디>.github.io/<저장소 이름>/`)를 엽니다.
+3. 1~2분 뒤 https://baekjiwoong5.github.io/-2/ 에서 계산기가 열립니다.
 
 > 저장소에서 `index.html` 파일을 클릭하면 **코드가 보이는 것이 정상**입니다. 계산기는 위의 Pages 주소에서 열립니다.
 > 내려받은 `index.html`을 더블클릭해서 바로 열어도 동작합니다.
@@ -90,8 +91,8 @@ flowchart LR
 ## 실행 방법
 
 ```bash
-git clone <이 저장소 주소>
-cd <저장소 폴더>
+git clone https://github.com/baekjiwoong5/-2.git
+cd -- -2
 pip install -r requirements.txt
 
 python ann_diabetes_predictor.py            # 학습, 결과 출력, images/ 그래프와 model.json 저장
